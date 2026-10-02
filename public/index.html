@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#102c56">
+  <title>SIGELAB | Control de laboratorios</title>
+  <link rel="stylesheet" href="/css/styles.css">
+  <script type="module" src="/js/app.js"></script>
+</head>
+<body>
+  <div id="login-screen" class="login-screen" hidden>
+    <section class="login-brand" aria-label="Universidad Católica de Honduras">
+      <img class="brand-crest" src="/assets/logo-unicah.png" alt="Emblema de UNICAH">
+      <p class="institution-name">UNIVERSIDAD CATÓLICA DE HONDURAS</p>
+      <p class="institution-subtitle">Nuestra Señora Reina de la Paz</p>
+      <div class="brand-rule"></div>
+      <p class="login-caption">Supervisión y control<br>de laboratorios de cómputo</p>
+    </section>
+    <section class="login-panel">
+      <div class="login-panel-inner">
+        <div class="brand-lockup"><img class="brand-mark" src="/assets/logo-unicah.png" alt="Emblema de UNICAH"><span>SIGELAB</span></div>
+        <p class="eyebrow">Acceso institucional</p>
+        <h1>Bienvenido</h1>
+        <p class="muted">Ingresa con tu cuenta para continuar.</p>
+        <form id="login-form" class="form-stack">
+          <label>Correo institucional<input name="correo" type="email" autocomplete="username" required placeholder="nombre@unicahedu.hn"></label>
+          <label>Contraseña<input name="contrasena" type="password" autocomplete="current-password" required placeholder="Tu contraseña"></label>
+          <p id="login-error" class="form-error" role="alert"></p>
+          <button class="button button-primary button-wide" type="submit">Iniciar sesión <span aria-hidden="true">→</span></button>
+        </form>
+        <p class="login-note">Sistema de Gestión y Supervisión de Laboratorios</p>
+      </div>
+    </section>
+  </div>
+
+  <div id="application" class="application" hidden>
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-brand">
+        <img class="brand-mark" src="/assets/logo-unicah.png" alt="Emblema de UNICAH">
+        <span><strong>SIGELAB</strong><small>UNICAH · LABORATORIOS</small></span>
+      </div>
+      <div class="sidebar-label">GESTIÓN</div>
+      <nav id="main-navigation" class="main-navigation" aria-label="Navegación principal"></nav>
+      <div class="sidebar-bottom">
+        <div class="sidebar-user"><span id="user-avatar" class="avatar">U</span><span><strong id="user-name"></strong><small id="user-role"></small></span></div>
+        <button id="logout-button" class="logout-button" type="button" title="Cerrar sesión" aria-label="Cerrar sesión">↗</button>
+      </div>
+    </aside>
+    <main class="main-area">
+      <header class="topbar">
+        <button id="menu-toggle" class="icon-button menu-toggle" type="button" aria-label="Abrir menú">☰</button>
+        <div class="breadcrumbs"><span>UNICAH</span><span class="crumb-divider">/</span><strong id="page-breadcrumb">Resumen general</strong></div>
+        <div class="topbar-right"><span id="today-label" class="today-label"></span><span class="topbar-dot"></span><span id="topbar-user" class="topbar-user"></span></div>
+      </header>
+      <div id="page-content" class="page-content" tabindex="-1"></div>
+    </main>
+  </div>
+  <div id="modal-root"></div>
+  <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+</body>
+</html>
