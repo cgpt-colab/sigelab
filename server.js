@@ -16,7 +16,7 @@ const pool = mysql.createPool({
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'sigelab',
   waitForConnections: true,
-  connectionLimit: 10,
+  connectionLimit: Number(process.env.DB_CONNECTION_LIMIT || (process.env.NETLIFY ? 1 : 10)),
   charset: 'utf8mb4',
   dateStrings: true
 });
@@ -642,15 +642,31 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(port, async () => {
-  try {
-    await pool.query('SELECT 1');
-    await seedAccounts();
-    console.log(`SIGELAB disponible en http://localhost:${port}`);
-  } catch (error) {
-    console.error('No se pudo conectar a MySQL. Verifica la configuración de la base de datos.', error.message);
-    server.close(() => process.exit(1));
+let initialization;
+async function initializeDatabase() {
+  if (!initialization) {
+    initialization = (async () => {
+      await pool.query('SELECT 1');
+      await seedAccounts();
+    })().catch(error => {
+      initialization = undefined;
+      throw error;
+    });
   }
-});
+  return initialization;
+}
 
-process.on('SIGINT', async () => { await pool.end(); process.exit(0); });
+if (require.main === module) {
+  server.listen(port, async () => {
+    try {
+      await initializeDatabase();
+      console.log(`SIGELAB disponible en http://localhost:${port}`);
+    } catch (error) {
+      console.error('No se pudo conectar a MySQL. Verifica la configuración de la base de datos.', error.message);
+      server.close(() => process.exit(1));
+    }
+  });
+  process.on('SIGINT', async () => { await pool.end(); process.exit(0); });
+}
+
+module.exports = { server, initializeDatabase, pool };

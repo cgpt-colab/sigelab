@@ -2,7 +2,7 @@
 
 Sistema de Gestión y Supervisión de Laboratorios de Cómputo para UNICAH.
 
-## Puesta en marcha
+## Puesta en marcha local
 
 1. Instala Node.js LTS y MySQL 8.
 2. Crea el esquema ejecutando `database/database.sql` en MySQL Workbench o con el cliente de MySQL.
@@ -41,4 +41,13 @@ Las inspecciones y las incidencias se conservan como historial. Ninguna inspecci
 npm run dev
 ```
 
-El navegador y la capa de servicio usan JavaScript nativo; MySQL almacena los datos. No se usa un framework de interfaz.
+## Despliegue en Netlify con MySQL
+
+Netlify sirve la interfaz estática y ejecuta la API existente mediante una Netlify Function ligera (`netlify/functions/api.js`). MySQL debe estar en un proveedor con acceso remoto desde Netlify; un MySQL instalado solo en tu computadora no es accesible desde el sitio publicado.
+
+1. Ejecuta `database/database.sql` en el servidor MySQL remoto.
+2. En Netlify, conecta este repositorio y despliega la rama `main`.
+3. En las variables de entorno del sitio configura `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `SEED_PASSWORD` y `DB_CONNECTION_LIMIT=1`.
+4. Verifica que el proveedor MySQL permita conexiones remotas desde las funciones de Netlify. Algunos hostings compartidos solo aceptan IPs previamente autorizadas y no son compatibles con IPs de salida dinámicas.
+
+La interfaz utiliza HTML, CSS y JavaScript nativos. El backend es Node.js con `mysql2`; `serverless-http` solo adapta el API existente al runtime de Netlify Functions.

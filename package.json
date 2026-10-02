@@ -6,9 +6,10 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env server.js",
     "dev": "node --watch --env-file-if-exists=.env server.js",
-    "check": "node --check server.js && node --check public/js/api.js && node --check public/js/views.js && node --check public/js/app.js"
+    "check": "node --check server.js && node --check netlify/functions/api.js && node --check public/js/api.js && node --check public/js/views.js && node --check public/js/app.js"
   },
   "dependencies": {
-    "mysql2": "^3.14.0"
+    "mysql2": "^3.14.0",
+    "serverless-http": "^4.0.0"
   }
 }
