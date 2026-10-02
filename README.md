@@ -2,23 +2,21 @@
 
 Sistema de Gestión y Supervisión de Laboratorios de Cómputo para UNICAH.
 
-## Despliegue con Supabase y Netlify
+## Puesta en marcha
 
-1. En Supabase, ejecuta `database/supabase.sql` una vez desde **SQL Editor**.
-2. En Netlify, conecta el repositorio de GitHub y usa la rama `main`. `netlify.toml` publica `public/` y enruta `/api/*` a la Netlify Function.
-3. En las variables de entorno del sitio configura `DATABASE_URL` con el URI **Transaction pooler** de Supabase (puerto 6543), `DATABASE_SSL_REJECT_UNAUTHORIZED=true`, `NODE_ENV=production` y `SEED_PASSWORD` con una contraseña privada de al menos 12 caracteres.
-4. Vuelve a desplegar. En la primera petición API se crean las cuatro cuentas de demostración y el escenario persistente del Laboratorio 2.
-
-Para ejecutar localmente contra Supabase, copia `.env.example` como `.env`, completa los valores privados e inicia:
+1. Instala Node.js LTS y MySQL 8.
+2. Crea el esquema ejecutando `database/database.sql` en MySQL Workbench o con el cliente de MySQL.
+3. Copia `.env.example` como `.env` y configura el usuario y la contraseña de MySQL.
+4. Instala las dependencias e inicia el sistema desde esta carpeta:
 
 ```powershell
 npm install
 npm start
 ```
 
-Después abre `http://localhost:3000`.
+5. Abre `http://localhost:3000`.
 
-Las cuatro cuentas iniciales comparten el valor configurado en `SEED_PASSWORD`; es una comodidad para el prototipo académico, no un flujo de producción.
+La primera ejecución crea cuatro cuentas de prueba con la contraseña definida en `SEED_PASSWORD`. Define una contraseña privada de al menos 12 caracteres en `.env` antes del primer inicio; no publiques ni compartas ese archivo.
 
 | Perfil | Correo |
 | --- | --- |
@@ -43,4 +41,4 @@ Las inspecciones y las incidencias se conservan como historial. Ninguna inspecci
 npm run dev
 ```
 
-La interfaz usa JavaScript nativo y PostgreSQL en Supabase almacena los datos. Las rutas API se ejecutan como Netlify Functions; no se usa un framework de interfaz.
+El navegador y la capa de servicio usan JavaScript nativo; MySQL almacena los datos. No se usa un framework de interfaz.
