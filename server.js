@@ -3,24 +3,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { promisify } = require('node:util');
-const mysql = require('mysql2/promise');
+const { pool, initializeConnection } = require('./database/pg-pool');
 
 const scrypt = promisify(crypto.scrypt);
 const root = __dirname;
 const publicDir = path.join(root, 'public');
 const port = Number(process.env.PORT || 3000);
-const pool = mysql.createPool({
-  host: process.env.DB_HOST || '127.0.0.1',
-  port: Number(process.env.DB_PORT || 3306),
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'sigelab',
-  waitForConnections: true,
-  connectionLimit: 10,
-  charset: 'utf8mb4',
-  dateStrings: true
-});
-
 const activeStates = ['PENDIENTE', 'EN REVISION', 'EN MANTENIMIENTO', 'ESPERANDO REPUESTO'];
 const roles = { admin: 'Administrador', coordinator: 'Coordinador Académico', teacher: 'Docente' };
 const mimeTypes = {
@@ -106,7 +94,7 @@ const viewRoles = [roles.teacher, roles.coordinator, roles.admin];
 
 async function seedAccounts() {
   const [[count]] = await pool.query('SELECT COUNT(*) AS total FROM usuarios');
-  if (count.total) {
+  if (Number(count.total) > 0) {
     await seedPersistenceScenario();
     return;
   }
@@ -142,8 +130,8 @@ async function seedPersistenceScenario() {
     const [[canonical]] = await pool.execute('SELECT id FROM equipos WHERE codigo=?', [code]);
     const [[legacy]] = await pool.execute('SELECT id FROM equipos WHERE codigo=? AND laboratorio_id=?', [legacyCode, labId]);
     if (!canonical && legacy) await pool.execute('UPDATE equipos SET codigo=? WHERE id=?', [code, legacy.id]);
-    else if (!canonical) await pool.execute(`INSERT IGNORE INTO equipos (codigo, laboratorio_id, tipo, marca, modelo)
-      VALUES (?, ?, 'Computadora', 'Lenovo', 'ThinkCentre')`, [code, labId]);
+    else if (!canonical) await pool.execute(`INSERT INTO equipos (codigo, laboratorio_id, tipo, marca, modelo)
+      VALUES (?, ?, 'Computadora', 'Lenovo', 'ThinkCentre') ON CONFLICT (codigo) DO NOTHING`, [code, labId]);
   }
   const [[existing]] = await pool.execute('SELECT id FROM incidencias WHERE codigo=\'INC-0001\'');
   if (existing) return;
@@ -217,7 +205,7 @@ async function getDashboard() {
   }
   const recurrentEquipment = await queryAll(`SELECT e.codigo, l.nombre AS laboratorio, COUNT(i.id) AS total
     FROM equipos e JOIN laboratorios l ON l.id=e.laboratorio_id JOIN incidencias i ON i.equipo_id=e.id
-    GROUP BY e.id HAVING COUNT(i.id) >= 2 ORDER BY total DESC LIMIT 3`);
+    GROUP BY e.id, e.codigo, l.nombre HAVING COUNT(i.id) >= 2 ORDER BY total DESC LIMIT 3`);
   for (const item of recurrentEquipment) alerts.push({ codigo: item.codigo, equipo: item.codigo, descripcion: `Equipo reincidente con ${item.total} fallas registradas.`, prioridad: 'ALTA', estado: 'ATENCION', laboratorio: item.laboratorio, dias_abierta: '—' });
   const operativas = labs.reduce((sum, lab) => sum + Number(lab.operativas), 0);
   const computadoras = labs.reduce((sum, lab) => sum + Number(lab.total_pc), 0);
@@ -382,7 +370,7 @@ async function api(req, res, url) {
       WHERE DATE(i.fecha_reporte) BETWEEN ? AND ?${filterSql} GROUP BY DATE(i.fecha_reporte) ORDER BY DATE(i.fecha_reporte)`, dateParams);
     const recurrent = await queryAll(`SELECT e.codigo, l.nombre AS laboratorio, COUNT(i.id) AS total FROM equipos e
       JOIN laboratorios l ON l.id=e.laboratorio_id JOIN incidencias i ON i.equipo_id=e.id
-      WHERE DATE(i.fecha_reporte) BETWEEN ? AND ?${filterSql} GROUP BY e.id ORDER BY total DESC LIMIT 6`, dateParams);
+      WHERE DATE(i.fecha_reporte) BETWEEN ? AND ?${filterSql} GROUP BY e.id, e.codigo, l.nombre ORDER BY total DESC LIMIT 6`, dateParams);
     return json(res, 200, { start, end, filters: { period, lab: labFilter, equipment: equipmentFilter, priority: priorityFilter, status: statusFilter }, summary, byLab, byType, byState, timeline, recurrent, labs: await getLabs() });
   }
 
@@ -405,16 +393,11 @@ async function api(req, res, url) {
       WHEN EXISTS (SELECT 1 FROM incidencias i WHERE i.equipo_id=e.id AND i.estado<>'RESUELTA') THEN 'OPERATIVO CON OBSERVACION' ELSE 'OPERATIVO' END AS estado_actual
       FROM equipos e JOIN laboratorios l ON l.id=e.laboratorio_id WHERE e.id=?`, [id]);
     if (!equipment[0]) return fail(res, 404, 'No se encontró el equipo.');
-    const events = await queryAll(`SELECT fecha_reporte AS fecha, _utf8mb4'Incidencia' COLLATE utf8mb4_unicode_ci AS evento,
-      CONVERT(codigo USING utf8mb4) COLLATE utf8mb4_unicode_ci AS referencia,
-      CONVERT(descripcion USING utf8mb4) COLLATE utf8mb4_unicode_ci AS detalle,
-      CONVERT(estado USING utf8mb4) COLLATE utf8mb4_unicode_ci AS estado,
-      CONVERT(responsable USING utf8mb4) COLLATE utf8mb4_unicode_ci AS responsable FROM incidencias WHERE equipo_id=?
-      UNION ALL SELECT fecha_inicio, CONVERT(CONCAT('Mantenimiento ', tipo) USING utf8mb4) COLLATE utf8mb4_unicode_ci,
-      CONVERT(CAST(id AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci,
-      CONVERT(descripcion USING utf8mb4) COLLATE utf8mb4_unicode_ci,
-      CONVERT(estado USING utf8mb4) COLLATE utf8mb4_unicode_ci,
-      CONVERT(responsable USING utf8mb4) COLLATE utf8mb4_unicode_ci FROM mantenimientos WHERE equipo_id=?
+    const events = await queryAll(`SELECT fecha_reporte AS fecha, 'Incidencia'::text AS evento,
+      codigo::text AS referencia, descripcion::text AS detalle, estado::text AS estado, responsable::text AS responsable
+      FROM incidencias WHERE equipo_id=?
+      UNION ALL SELECT fecha_inicio, ('Mantenimiento ' || tipo)::text, id::text, descripcion::text, estado::text, responsable::text
+      FROM mantenimientos WHERE equipo_id=?
       ORDER BY fecha DESC`, [id, id]);
     return json(res, 200, { ...equipment[0], events });
   }
@@ -439,7 +422,7 @@ async function api(req, res, url) {
       const [result] = await pool.execute(`INSERT INTO equipos (codigo, laboratorio_id, tipo, marca, modelo, numero_serie, numero_inventario, descripcion)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [code, labId, input.tipo, safeText(input.marca, 80), safeText(input.modelo, 100), safeText(input.numero_serie, 100), safeText(input.numero_inventario, 100), safeText(input.descripcion)]);
       return json(res, 201, { id: result.insertId, codigo: code });
-    } catch (error) { if (error.code === 'ER_DUP_ENTRY') return fail(res, 409, 'Ya existe un equipo con ese código.'); throw error; }
+    } catch (error) { if (error.code === '23505') return fail(res, 409, 'Ya existe un equipo con ese código.'); throw error; }
   }
   if (pathname.startsWith('/api/equipment/') && method === 'PATCH') {
     requireRole(user, coordinatorRoles);
@@ -534,9 +517,10 @@ async function api(req, res, url) {
       const old = rows[0].estado;
       await connection.execute(`UPDATE incidencias SET estado=?, responsable=COALESCE(NULLIF(?, ''), responsable),
         observaciones=CONCAT_WS(CHAR(10), NULLIF(observaciones,''), NULLIF(?,'')),
-        accion_realizada=IF(?='RESUELTA', ?, accion_realizada), diagnostico=IF(?='RESUELTA', ?, diagnostico),
-        fecha_primera_atencion=IF(?<>'PENDIENTE' AND fecha_primera_atencion IS NULL, NOW(), fecha_primera_atencion),
-        fecha_resolucion=IF(?='RESUELTA', NOW(), NULL) WHERE id=?`,
+        accion_realizada=CASE WHEN ?='RESUELTA' THEN ? ELSE accion_realizada END,
+        diagnostico=CASE WHEN ?='RESUELTA' THEN ? ELSE diagnostico END,
+        fecha_primera_atencion=CASE WHEN ?<>'PENDIENTE' AND fecha_primera_atencion IS NULL THEN NOW() ELSE fecha_primera_atencion END,
+        fecha_resolucion=CASE WHEN ?='RESUELTA' THEN NOW() ELSE NULL END WHERE id=?`,
       [input.estado, safeText(input.responsable, 160), safeText(input.observaciones), input.estado, safeText(input.accion_realizada), input.estado, safeText(input.diagnostico), input.estado, input.estado, id]);
       await connection.execute('INSERT INTO historial_incidencias (incidencia_id, usuario_id, estado_anterior, estado_nuevo, comentario) VALUES (?, ?, ?, ?, ?)',
         [id, user.id, old, input.estado, safeText(input.comentario || input.observaciones || input.accion_realizada, 3000) || `Estado actualizado a ${input.estado}.`]);
@@ -574,7 +558,7 @@ async function api(req, res, url) {
     if (!allowedStates.includes(input.estado)) return fail(res, 400, 'Selecciona un estado válido.');
     const [result] = await pool.execute(`UPDATE mantenimientos SET estado=?, resultado=COALESCE(NULLIF(?,''), resultado),
       observaciones=CONCAT_WS(CHAR(10), NULLIF(observaciones,''), NULLIF(?,'')),
-      fecha_fin=IF(?='COMPLETADO', NOW(), NULL) WHERE id=?`,
+      fecha_fin=CASE WHEN ?='COMPLETADO' THEN NOW() ELSE NULL END WHERE id=?`,
     [input.estado, safeText(input.resultado), safeText(input.observaciones), input.estado, id]);
     if (!result.affectedRows) return fail(res, 404, 'No se encontró el mantenimiento.');
     return json(res, 200, { ok: true });
@@ -636,21 +620,35 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname.startsWith('/api/')) await api(req, res, url);
     else await staticFile(req, res, url.pathname);
   } catch (error) {
-    const status = error.status || (error.code === 'ER_DUP_ENTRY' ? 409 : 500);
+    const status = error.status || (error.code === '23505' ? 409 : 500);
     if (status >= 500) console.error(error);
     json(res, status, { error: status === 500 ? 'Ocurrió un error al procesar la solicitud.' : error.message });
   }
 });
 
-server.listen(port, async () => {
-  try {
-    await pool.query('SELECT 1');
-    await seedAccounts();
-    console.log(`SIGELAB disponible en http://localhost:${port}`);
-  } catch (error) {
-    console.error('No se pudo conectar a MySQL. Verifica la configuración de la base de datos.', error.message);
-    server.close(() => process.exit(1));
+let initialization;
+async function initializeDatabase() {
+  if (!process.env.DATABASE_URL) throw new Error('Falta configurar DATABASE_URL para PostgreSQL.');
+  if (!initialization) {
+    initialization = (async () => {
+      await initializeConnection();
+      await seedAccounts();
+    })();
   }
-});
+  return initialization;
+}
 
-process.on('SIGINT', async () => { await pool.end(); process.exit(0); });
+if (require.main === module) {
+  server.listen(port, async () => {
+    try {
+      await initializeDatabase();
+      console.log(`SIGELAB disponible en http://localhost:${port}`);
+    } catch (error) {
+      console.error('No se pudo inicializar PostgreSQL. Verifica DATABASE_URL y el SQL de Supabase.', error.message);
+      server.close(() => process.exit(1));
+    }
+  });
+  process.on('SIGINT', async () => { await pool.end(); process.exit(0); });
+}
+
+module.exports = { server, initializeDatabase, pool };
